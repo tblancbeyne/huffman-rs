@@ -1,0 +1,7 @@
+[package]
+name = "huffman-rs"
+version = "0.1.0"
+authors = ["Thibault Blanc Beyne <thibault.blancbeyne@gmail.com>"]
+edition = "2018"
+
+[dependencies]
