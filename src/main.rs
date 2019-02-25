@@ -8,20 +8,8 @@ use std::collections::HashMap;
 // Size of the buffer when reading a file
 const BUFFER_SIZE: usize = 1024;
 
-enum Tree {
-	Leaf {
-		symbol : u8,
-		freq : usize,
-	},
-	Node {
-		left : Box<Tree>,
-		freq : usize,
-		right : Box<Tree>,
-	},
-}
-
 struct Node {
-    symbol: Option<u8>,
+    symbol: Option<Option<u8>>,
     frequency: usize,
     left: Option<Box<Node>>,
     right: Option<Box<Node>>,
@@ -96,14 +84,104 @@ fn display_tree_aux(tree : &Node, rank : usize, bars : &mut Vec<bool>) {
                 Some(ref node) => &*node,
                 None => panic!("Tree is not perfect!"),
             }, rank + 1,  bars);
-        }
-        Some(val) => println!("({}) {:?}", tree.frequency, std::str::from_utf8(&[val])
+        },
+
+        Some(None) => println!("({}) \\$", tree.frequency),
+
+        Some(Some(val)) => println!("({}) {:?}", tree.frequency, std::str::from_utf8(&[val])
 			.expect("Error")),
     }
 }
 
-fn encode_bytes(tree : Node){
-	//encode_bytes_aux(tree,
+fn encode_bytes(tree : &Node) -> HashMap<Option<u8>, String> {
+    let mut code = HashMap::new();
+	encode_bytes_aux(tree, &mut String::from(""), &mut code);
+
+    return code;
+}
+
+fn encode_bytes_aux(tree : &Node, curr_code : &mut std::string::String, code : &mut HashMap<Option<u8>, String>) {
+    match tree.symbol {
+        None => {
+            curr_code.push_str("0");
+            encode_bytes_aux(match tree.left {
+                Some(ref node) => &*node,
+                None => panic!("Tree is not perfect!"),
+            }, curr_code, code);
+            curr_code.pop()
+                .expect("Empty curr_code !");
+
+            curr_code.push_str("1");
+            encode_bytes_aux(match tree.right {
+                Some(ref node) => &*node,
+                None => panic!("Tree is not perfect!"),
+            }, curr_code, code);
+            curr_code.pop()
+                .expect("Empty curr_code !");
+        },
+
+        Some(val) => {
+            code.insert(val, curr_code.to_string());
+        },
+    }
+}
+
+fn display_code(code : &HashMap<Option<u8>, String>) {
+    for element in code.iter() {
+        match element {
+            (Some(val), other) => {
+                let slice = &[*val];
+                let string = std::str::from_utf8(slice).expect("Error");
+                println!("{:?} : {}", string, other);
+            },
+            (None, other) => {
+                println!("\\$ : {}", other);
+            },
+        }
+    }
+}
+
+fn compress(code : &HashMap<Option<u8>, String>, filename : &String) {
+    let mut file = File::open(filename)
+        .expect("Error opening file");
+
+    // Constructing a buffer to use while reading the file
+    let mut buffer = [0; BUFFER_SIZE];
+
+    let mut text = Vec::new();
+
+    // Reading the file
+    loop {
+        // Reading BUFFER_SIZE bytes in the file
+        let read = file.read(&mut buffer)
+            .expect("Error reading file");
+
+        // Updating the hashmap of frequencies
+        for byte in buffer.iter().take(read) {
+            text.push(*byte);
+        }
+
+        // If we reached the end of the file, get out
+        if read == 0 {
+            break;
+        }
+    }
+
+    let mut compressed : String = "".to_owned();
+
+    for element in text {
+        compressed.push_str(match code.get(&Some(element)) {
+            Some(val) => val,
+            None => unreachable!("Empty code for symbol!"),
+        });
+    }
+
+    compressed.push_str(match code.get(&None) {
+        Some(val) => val,
+        None => unreachable!("Empty code for symbol!"),
+    });
+
+    println!("{}", compressed.as_str());
 }
 
 fn main() {
@@ -118,7 +196,7 @@ fn main() {
     };
 
     // Opening file whose name is given as first argument
-    let mut file = File::open(filename)
+    let mut file = File::open(&filename)
         .expect("Error opening file");
 
     // Constructing a buffer to use while reading the file
@@ -126,6 +204,8 @@ fn main() {
 
     // Constructing a hasmap to store the frequencies of each symbol
     let mut freqs = HashMap::new();
+
+    freqs.insert(None, 0);
 
     // Reading the file
     loop {
@@ -135,7 +215,7 @@ fn main() {
 
         // Updating the hashmap of frequencies
         for byte in buffer.iter().take(read) {
-            let entry = freqs.entry(*byte).or_insert(0);
+            let entry = freqs.entry(Some(*byte)).or_insert(0);
             *entry += 1;
         }
 
@@ -161,6 +241,10 @@ fn main() {
     let root = create_tree(leafs);
 
     display_tree(&root);
-    display_tree(&root);
+    let encoding = encode_bytes(&root);
+
+    display_code(&encoding);
+
+    compress(&encoding, &filename);
 }
 
