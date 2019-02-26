@@ -1,4 +1,3 @@
-use colored::*;
 use std::env;
 use std::process::exit;
 use std::fs::File;
@@ -15,8 +14,7 @@ struct Node {
     right: Option<Box<Node>>,
 }
 
-fn create_tree(mut tree : Vec<Node>) -> Node
-{
+fn create_tree(mut tree : Vec<Node>) -> Node {
     while tree.len() > 1 {
         tree.sort_by(|a,b| (&(b.frequency)).cmp(&(a.frequency)));
 
@@ -86,7 +84,7 @@ fn display_tree_aux(tree : &Node, rank : usize, bars : &mut Vec<bool>) {
             }, rank + 1,  bars);
         },
 
-        Some(None) => println!("({}) \\$", tree.frequency),
+        Some(None) => println!("({}) \"\\$\"", tree.frequency),
 
         Some(Some(val)) => println!("({}) {:?}", tree.frequency, std::str::from_utf8(&[val])
 			.expect("Error")),
@@ -135,7 +133,7 @@ fn display_code(code : &HashMap<Option<u8>, String>) {
                 println!("{:?} : {}", string, other);
             },
             (None, other) => {
-                println!("\\$ : {}", other);
+                println!("\"\\$\" : {}", other);
             },
         }
     }
@@ -182,6 +180,34 @@ fn compress(code : &HashMap<Option<u8>, String>, filename : &String) {
     });
 
     println!("{}", compressed.as_str());
+}
+
+fn encode_tree(tree : &Node) -> String {
+    let mut encoded_tree : String = "".to_owned();
+    match tree.symbol {
+        None => {
+            encoded_tree.push_str("0");
+
+            match tree.left {
+                Some(ref left) =>  {
+                    encoded_tree.push_str(encode_tree(&*left).as_str());
+                }
+                None => unreachable!("Tree is not perfect"),
+            }
+
+            match tree.right {
+                Some(ref right) =>  {
+                    encoded_tree.push_str(encode_tree(&*right).as_str());
+                }
+                None => unreachable!("Tree is not perfect"),
+            }
+        },
+        Some(_) => {
+            encoded_tree.push_str("1");
+        },
+    }
+
+    return encoded_tree;
 }
 
 fn main() {
@@ -231,20 +257,32 @@ fn main() {
         leafs.push(Node {symbol : Some(*element.0),  frequency : *element.1, left : None, right : None});
     }
 
+    // Displaying the leafs
     for element in leafs.iter() {
-        println!("{:?} : {}", match element.symbol {
-            Some(val) => val,
+        match element.symbol {
+            Some(Some(val)) => println!("{:?} : {}", val, element.frequency),
+            Some(None) => println!("-1 : {}" , element.frequency),
             None => panic!("Empty leaf"),
-        }, element.frequency);
+        }
     }
 
+    // Creating the Huffman tree
     let root = create_tree(leafs);
 
+    // Displaying the tree
     display_tree(&root);
+
+    // Encoding the bytes thanks to the tree
     let encoding = encode_bytes(&root);
 
+    // Displaying the code
     display_code(&encoding);
 
+    // Compressing the text
     compress(&encoding, &filename);
+
+    // Encoding the tree
+    let encoded_tree = encode_tree(&root);
+    println!("{}", encoded_tree);
 }
 
