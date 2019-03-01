@@ -1,147 +1,22 @@
 use std::env;
-use std::process::exit;
+use std::path::Path;
 use std::fs::File;
-use std::io::Read;
+use std::io::{Read, Write};
+use std::process::exit;
 use std::collections::HashMap;
+
+use huffman_rs::{Node, Symbol};
+use huffman_rs::encode::{create_tree, encode_bytes, encode_tree, encode_symbols};
+use huffman_rs::decode::{decode_tree};
+use huffman_rs::display::{display_tree, display_code, display_decoded_tree};
 
 // Size of the buffer when reading a file
 const BUFFER_SIZE: usize = 1024;
 
-struct Node {
-    symbol: Option<Option<u8>>,
-    frequency: usize,
-    left: Option<Box<Node>>,
-    right: Option<Box<Node>>,
-}
+fn compress<P: AsRef<Path>>(code: &HashMap<Symbol, Vec<bool>>, filename: P) -> Vec<bool> {
+    let f = filename.as_ref();
 
-fn create_tree(mut tree : Vec<Node>) -> Node {
-    while tree.len() > 1 {
-        tree.sort_by(|a,b| (&(b.frequency)).cmp(&(a.frequency)));
-
-        let leaf0 = tree.pop().unwrap();
-        let leaf1 = tree.pop().unwrap();
-
-        let freq = leaf0.frequency + leaf1.frequency;
-
-        let new_node = Node{
-            symbol : None,
-            frequency : freq,
-            left : Some(Box::new(leaf0)),
-            right : Some(Box::new(leaf1))};
-
-        tree.push(new_node);
-
-    }
-
-    tree.pop().unwrap()
-}
-
-fn update_bars(rank : usize, bars : &mut Vec<bool>, val : bool) {
-    if bars.len() == rank {
-        bars.push(val);
-    } else {
-        bars[rank] = val;
-    }
-}
-
-fn align(rank : usize, bars : & Vec<bool>) {
-    for i in 0..rank {
-        if bars[i] {
-            print!(" │");
-        } else {
-            print!("  ");
-        }
-        print!("      ");
-    }
-}
-
-fn display_tree(tree: &Node) {
-	display_tree_aux(tree, 0, &mut Vec::new())
-}
-
-fn display_tree_aux(tree : &Node, rank : usize, bars : &mut Vec<bool>) {
-    match tree.symbol {
-        None => {
-            println!("({})", tree.frequency);
-
-            update_bars(rank, bars, true);
-            align(rank, bars);
-
-
-            print!(" ├─ 0 ─ ");
-            display_tree_aux(match tree.left {
-                Some(ref node) => &*node,
-                None => panic!("Tree is not perfect!"),
-            }, rank + 1, bars);
-
-            update_bars(rank, bars, false);
-            align(rank, bars);
-
-            print!(" └─ 1 ─ ");
-            display_tree_aux(match tree.right {
-                Some(ref node) => &*node,
-                None => panic!("Tree is not perfect!"),
-            }, rank + 1,  bars);
-        },
-
-        Some(None) => println!("({}) \"\\$\"", tree.frequency),
-
-        Some(Some(val)) => println!("({}) {:?}", tree.frequency, std::str::from_utf8(&[val])
-			.expect("Error")),
-    }
-}
-
-fn encode_bytes(tree : &Node) -> HashMap<Option<u8>, String> {
-    let mut code = HashMap::new();
-	encode_bytes_aux(tree, &mut String::from(""), &mut code);
-
-    return code;
-}
-
-fn encode_bytes_aux(tree : &Node, curr_code : &mut std::string::String, code : &mut HashMap<Option<u8>, String>) {
-    match tree.symbol {
-        None => {
-            curr_code.push_str("0");
-            encode_bytes_aux(match tree.left {
-                Some(ref node) => &*node,
-                None => panic!("Tree is not perfect!"),
-            }, curr_code, code);
-            curr_code.pop()
-                .expect("Empty curr_code !");
-
-            curr_code.push_str("1");
-            encode_bytes_aux(match tree.right {
-                Some(ref node) => &*node,
-                None => panic!("Tree is not perfect!"),
-            }, curr_code, code);
-            curr_code.pop()
-                .expect("Empty curr_code !");
-        },
-
-        Some(val) => {
-            code.insert(val, curr_code.to_string());
-        },
-    }
-}
-
-fn display_code(code : &HashMap<Option<u8>, String>) {
-    for element in code.iter() {
-        match element {
-            (Some(val), other) => {
-                let slice = &[*val];
-                let string = std::str::from_utf8(slice).expect("Error");
-                println!("{:?} : {}", string, other);
-            },
-            (None, other) => {
-                println!("\"\\$\" : {}", other);
-            },
-        }
-    }
-}
-
-fn compress(code : &HashMap<Option<u8>, String>, filename : &String) {
-    let mut file = File::open(filename)
-        .expect("Error opening file");
+    let mut file = File::open(&f).expect("Error opening file");
 
     // Constructing a buffer to use while reading the file
     let mut buffer = [0; BUFFER_SIZE];
@@ -151,8 +26,7 @@ fn compress(code : &HashMap<Option<u8>, String>, filename : &String) {
     // Reading the file
     loop {
         // Reading BUFFER_SIZE bytes in the file
-        let read = file.read(&mut buffer)
-            .expect("Error reading file");
+        let read = file.read(&mut buffer).expect("Error reading file");
 
         // Updating the hashmap of frequencies
         for byte in buffer.iter().take(read) {
@@ -165,53 +39,81 @@ fn compress(code : &HashMap<Option<u8>, String>, filename : &String) {
         }
     }
 
-    let mut compressed : String = "".to_owned();
+    let mut compressed = Vec::new();
 
     for element in text {
-        compressed.push_str(match code.get(&Some(element)) {
-            Some(val) => val,
+        compressed.extend_from_slice(match code.get(&Some(element)) {
+            Some(val) => &val,
             None => unreachable!("Empty code for symbol!"),
         });
     }
 
-    compressed.push_str(match code.get(&None) {
-        Some(val) => val,
+    compressed.extend_from_slice(match code.get(&None) {
+        Some(val) => &val,
         None => unreachable!("Empty code for symbol!"),
     });
 
-    println!("{}", compressed.as_str());
+    compressed
 }
 
-fn encode_tree(tree : &Node) -> String {
-    let mut encoded_tree : String = "".to_owned();
-    match tree.symbol {
-        None => {
-            encoded_tree.push_str("0");
+//fn decode_symbols(encoded_symbols: String) -> Vec<Symbol> {
+//    let chars: Vec<Symbol>;
+//    let curr_char = 0;
+//
+//    for i in 0..7 {
+//    }
+//
+//
+//    return chars;
+//
+//
+//}
 
-            match tree.left {
-                Some(ref left) =>  {
-                    encoded_tree.push_str(encode_tree(&*left).as_str());
-                }
-                None => unreachable!("Tree is not perfect"),
-            }
+fn val_to_string(val: &Symbol) -> String {
+    match val {
+        Some(val) => std::str::from_utf8(&[*val])
+                .expect("Error").to_owned(),
+        None =>  "\\$".to_owned(),
+    }
+}
 
-            match tree.right {
-                Some(ref right) =>  {
-                    encoded_tree.push_str(encode_tree(&*right).as_str());
-                }
-                None => unreachable!("Tree is not perfect"),
-            }
-        },
-        Some(_) => {
-            encoded_tree.push_str("1");
-        },
+fn display_symbols(symbols: &Vec<Symbol>) {
+    for symbol in symbols {
+        println!("{:?}", val_to_string(&symbol));
+    }
+}
+
+fn bools_to_bytes(text: &Vec<bool>) -> Vec<u8> {
+    let mut i = 0;
+    let mut curr_byte = 0;
+    let mut bytes = Vec::new();
+
+    for val in text {
+        curr_byte += if *val {
+            1
+        } else {
+            0
+        };
+
+        if i == 7 {
+            i = 0;
+            bytes.push(curr_byte);
+            curr_byte = 0;
+        } else {
+            i += 1;
+            curr_byte *= 2;
+        }
     }
 
-    return encoded_tree;
+    while i < 7 {
+        curr_byte *= 2;
+        i += 1;
+    }
+
+    bytes
 }
 
 fn main() {
-
     // Checking that something is given as first argument
     let filename = match env::args().nth(1) {
         Some(f) => f,
@@ -222,8 +124,7 @@ fn main() {
     };
 
     // Opening file whose name is given as first argument
-    let mut file = File::open(&filename)
-        .expect("Error opening file");
+    let mut file = File::open(&filename).expect("Error opening file");
 
     // Constructing a buffer to use while reading the file
     let mut buffer = [0; BUFFER_SIZE];
@@ -236,8 +137,7 @@ fn main() {
     // Reading the file
     loop {
         // Reading BUFFER_SIZE bytes in the file
-        let read = file.read(&mut buffer)
-            .expect("Error reading file");
+        let read = file.read(&mut buffer).expect("Error reading file");
 
         // Updating the hashmap of frequencies
         for byte in buffer.iter().take(read) {
@@ -254,14 +154,19 @@ fn main() {
     // Creating a vector of leafs
     let mut leafs = Vec::new();
     for element in freqs.iter() {
-        leafs.push(Node {symbol : Some(*element.0),  frequency : *element.1, left : None, right : None});
+        leafs.push(Node {
+            symbol: Some(*element.0),
+            frequency: *element.1,
+            left: None,
+            right: None,
+        });
     }
 
     // Displaying the leafs
     for element in leafs.iter() {
         match element.symbol {
             Some(Some(val)) => println!("{:?} : {}", val, element.frequency),
-            Some(None) => println!("-1 : {}" , element.frequency),
+            Some(None) => println!("-1 : {}", element.frequency),
             None => panic!("Empty leaf"),
         }
     }
@@ -273,16 +178,50 @@ fn main() {
     display_tree(&root);
 
     // Encoding the bytes thanks to the tree
-    let encoding = encode_bytes(&root);
+    let (encoding, symbols) = encode_bytes(&root);
 
     // Displaying the code
     display_code(&encoding);
 
-    // Compressing the text
-    compress(&encoding, &filename);
+    display_symbols(&symbols);
+
+    let encoded_symbols = encode_symbols(&symbols);
 
     // Encoding the tree
-    let encoded_tree = encode_tree(&root);
-    println!("{}", encoded_tree);
-}
+    let mut encoded_tree = encode_tree(&root);
+    println!("{:?}", encoded_tree);
 
+    // Compressing the text
+    let mut compressed_text = compress(&encoding, &filename);
+    println!("{:?}", compressed_text);
+
+
+    println!("{:?}", encoded_symbols);
+
+    let mut text = Vec::new();
+    text.append(&mut encoded_tree);
+    text.append(&mut compressed_text);
+
+    let mut content = encoded_symbols;
+    content.extend_from_slice(&bools_to_bytes(&text));
+    println!("{:?}", content);
+
+    let mut dest_file = File::create(format!("{}.hff", filename))
+        .expect("Error opening file");
+
+    dest_file.write(&content)
+        .expect("Error writing in file");
+
+
+    // Opening file whose name is given as first argument
+    //let mut dest_filename = filename;
+    //dest_filename.push_str(".hff");
+    // TODO : write in a file
+    // TODO : read a file
+
+    //let decoded_symbols = decode_symbols(encoded_symbols);
+
+    //let decoded_tree = decode_tree(&encoded_tree);//, decoded_symbols);
+
+    //display_decoded_tree(&decoded_tree);
+}
