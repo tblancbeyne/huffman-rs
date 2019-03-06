@@ -2,6 +2,17 @@ use std::collections::HashMap;
 
 use crate::{Node, Symbol};
 
+pub fn display_leafs(leafs: &Vec<Node>) {
+    println!("Displaying the list of symbols and their frequency");
+    for element in leafs {
+        match element.symbol {
+            Some(val) => println!("{:?} : {}", val_to_string(&val), element.frequency),
+            None => unreachable!("Empty leaf"),
+        }
+    }
+    println!();
+}
+
 fn update_bars(rank: usize, bars: &mut Vec<bool>, val: bool) {
     if bars.len() == rank {
         bars.push(val);
@@ -22,7 +33,9 @@ fn align(rank: usize, bars: &Vec<bool>) {
 }
 
 pub fn display_tree(tree: &Node) {
-    display_tree_aux(tree, 0, &mut Vec::new())
+    println!("Displaying the Huffman tree");
+    display_tree_aux(tree, 0, &mut Vec::new());
+    println!();
 }
 
 fn display_tree_aux(tree: &Node, rank: usize, bars: &mut Vec<bool>) {
@@ -57,45 +70,7 @@ fn display_tree_aux(tree: &Node, rank: usize, bars: &mut Vec<bool>) {
             );
         }
 
-        Some(None) => println!("({}) \"\\$\"", tree.frequency),
-
-        Some(Some(val)) => println!(
-            "({}) {:?}",
-            tree.frequency,
-            std::str::from_utf8(&[val]).expect("Error")
-        ),
-    }
-}
-
-pub fn display_decoded_tree(tree: &Node) {
-    display_decoded_tree_aux(tree, 0, &mut Vec::new())
-}
-
-fn display_decoded_tree_aux(tree: &Node, rank: usize, bars: &mut Vec<bool>) {
-    match tree.symbol {
-        None => {
-            match tree.left {
-                Some(ref node) => {
-                    update_bars(rank, bars, true);
-                    align(rank, bars);
-                    println!(" ├─ 0 ─ ");
-                    display_decoded_tree_aux(&*node, rank + 1, bars);
-                },
-                None => (),
-            };
-
-            match tree.right {
-                Some(ref node) => {
-                    update_bars(rank, bars, false);
-                    align(rank, bars);
-                    println!(" └─ 1 ─ ");
-                    display_decoded_tree_aux(&*node, rank + 1, bars);
-                },
-                None => (),
-            };
-        }
-
-        Some(None) => println!("({}) \"\\$\"", tree.frequency),
+        Some(None) => println!("({}) \"EOF\"", tree.frequency),
 
         Some(Some(val)) => println!(
             "({}) {:?}",
@@ -106,16 +81,45 @@ fn display_decoded_tree_aux(tree: &Node, rank: usize, bars: &mut Vec<bool>) {
 }
 
 pub fn display_code(code: &HashMap<Symbol, Vec<bool>>) {
+    println!("Displaying the encoding");
     for element in code.iter() {
-        match element {
-            (Some(val), other) => {
+        match element.0 {
+            Some(val) => {
                 let slice = &[*val];
                 let string = std::str::from_utf8(slice).expect("Error");
-                println!("{:?} : {:?}", string, other);
+                print!("{:?}", string);
             }
-            (None, other) => {
-                println!("\"\\$\" : {:?}", other);
+            None => print!("\"EOF\""),
+        }
+
+        print!(": ");
+
+        for val in element.1 {
+            if *val {
+                print!("1");
+            } else {
+                print!("0");
             }
         }
+
+        println!();
     }
+    println!();
+}
+
+fn val_to_string(val: &Symbol) -> String {
+    match val {
+        Some(val) => std::str::from_utf8(&[*val]).expect("Error").to_owned(),
+        None => "EOF".to_owned(),
+    }
+}
+
+pub fn display_text(text: &Vec<u8>) {
+    println!("Displaying the content of the file");
+    for element in text {
+        let slice = &[*element];
+        let string = std::str::from_utf8(slice).expect("Error");
+        print!("{}", string);
+    }
+    println!();
 }

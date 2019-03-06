@@ -1,6 +1,6 @@
+pub mod decode;
 pub mod display;
 pub mod encode;
-pub mod decode;
 
 pub struct Node {
     pub symbol: Option<Symbol>,
@@ -10,3 +10,12 @@ pub struct Node {
 }
 
 pub type Symbol = Option<u8>;
+
+pub enum Step {
+    Table,
+    Tree,
+    Text,
+}
+
+// Size of the buffer when reading a file
+pub const BUFFER_SIZE: usize = 1024;

@@ -1,6 +1,9 @@
 use std::collections::HashMap;
-use num::pow;
+use std::fs::File;
+use std::io::Read;
+use std::path::Path;
 
+use crate::BUFFER_SIZE;
 use crate::{Node, Symbol};
 
 pub fn create_tree(mut tree: Vec<Node>) -> Node {
@@ -29,8 +32,8 @@ pub fn encode_byte(mut val: u8) -> String {
     let mut byte: String = "".to_owned();
 
     for i in (0..7).rev() {
-        byte.push_str((val / pow(2,i)).to_string().as_str());
-        val = val % pow(2,i);
+        byte.push_str((val / 2u8.pow(i)).to_string().as_str());
+        val = val % 2u8.pow(i);
     }
 
     return byte;
@@ -132,4 +135,47 @@ pub fn encode_symbols(symbols: &Vec<Symbol>) -> Vec<u8> {
     table.push(*table.last().unwrap());
 
     table
+}
+
+pub fn compress<P: AsRef<Path>>(code: &HashMap<Symbol, Vec<bool>>, filename: P) -> Vec<bool> {
+    let f = filename.as_ref();
+
+    let mut file = File::open(&f).expect("Error opening file");
+
+    // Constructing a buffer to use while reading the file
+    let mut buffer = [0; BUFFER_SIZE];
+
+    let mut text = Vec::new();
+
+    // Reading the file
+    loop {
+        // Reading BUFFER_SIZE bytes in the file
+        let read = file.read(&mut buffer).expect("Error reading file");
+
+        // Updating the hashmap of frequencies
+        for byte in buffer.iter().take(read) {
+            text.push(*byte);
+        }
+
+        // If we reached the end of the file, get out
+        if read == 0 {
+            break;
+        }
+    }
+
+    let mut compressed = Vec::new();
+
+    for element in text {
+        compressed.extend_from_slice(match code.get(&Some(element)) {
+            Some(val) => &val,
+            None => unreachable!("Empty code for symbol!"),
+        });
+    }
+
+    compressed.extend_from_slice(match code.get(&None) {
+        Some(val) => &val,
+        None => unreachable!("Empty code for symbol!"),
+    });
+
+    compressed
 }
